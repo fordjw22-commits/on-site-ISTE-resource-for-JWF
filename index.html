@@ -52,7 +52,7 @@
   .chip .n{opacity:.65;font-weight:600;margin-left:5px}
   .chip.on{background:#fff;color:var(--navy);border-color:#fff}
   /* ---------- list ---------- */
-  main{padding:10px 10px 90px 10px;max-width:720px;margin:0 auto}
+  main{padding:10px 10px 128px 10px;max-width:720px;margin:0 auto}
   .empty{text-align:center;color:var(--muted);padding:48px 20px;font-size:15px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:13px;
     margin-bottom:9px;box-shadow:var(--shadow);overflow:hidden}
@@ -72,8 +72,6 @@
     padding:2px 7px;border-radius:5px;color:#fff}
   .b-client{background:var(--navy)} .b-prospect{background:var(--green)}
   .b-account{background:var(--amber)} .b-exhibitor{background:#9aa6b2}
-  .tier{font-size:10.5px;font-weight:800;padding:2px 6px;border-radius:5px;color:#fff;letter-spacing:.3px}
-  .t-1{background:var(--red)} .t-2{background:#e08a1e} .t-3{background:#9aa6b2}
   .hq{font-size:12px;color:var(--muted);font-weight:600}
   .cc{font-size:12px;color:var(--navy);font-weight:700;background:#eaf1f9;border-radius:999px;padding:2px 8px}
   .cc.zero{color:#9aa3ad;background:#f1f1f1}
@@ -118,12 +116,21 @@
     border-radius:8px;background:#fffdf7;resize:vertical;min-height:46px;margin-top:6px}
   /* ---------- footer ---------- */
   .toolbar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:#fff;
-    border-top:1px solid var(--line);display:flex;gap:8px;padding:10px 12px;
-    padding-bottom:calc(10px + env(safe-area-inset-bottom));box-shadow:0 -2px 12px rgba(16,53,92,.08)}
-  .toolbar button{flex:1;font-size:13px;font-weight:700;border:1px solid var(--line);
+    border-top:1px solid var(--line);padding:8px 12px;
+    padding-bottom:calc(8px + env(safe-area-inset-bottom));box-shadow:0 -2px 12px rgba(16,53,92,.08)}
+  .savebar{display:flex;justify-content:space-between;align-items:center;gap:10px;
+    font-size:12px;font-weight:600;margin-bottom:7px;line-height:1.25}
+  #saveState{color:var(--green);white-space:nowrap}
+  #saveState.saving{color:var(--muted)}
+  #saveState.off{color:var(--muted)}
+  #backupState{color:var(--muted);text-align:right}
+  #backupState.due{color:var(--amber)}
+  .toolrow{display:flex;gap:8px}
+  .toolrow button{flex:1;font-size:13px;font-weight:700;border:1px solid var(--line);
     background:#fff;color:var(--navy);border-radius:9px;padding:11px 6px;cursor:pointer}
-  .toolbar button.primary{background:var(--navy);color:#fff;border-color:var(--navy)}
-  .toast{position:fixed;left:50%;bottom:78px;transform:translateX(-50%) translateY(20px);
+  .toolrow button.primary{background:var(--navy);color:#fff;border-color:var(--navy)}
+  #expBackup.due{border-color:var(--warn-line);background:#fff8ec;color:#8a5a12}
+  .toast{position:fixed;left:50%;bottom:112px;transform:translateX(-50%) translateY(20px);
     background:#16202b;color:#fff;font-size:13px;font-weight:600;padding:10px 16px;border-radius:10px;
     opacity:0;pointer-events:none;transition:.2s;z-index:50;box-shadow:0 4px 16px rgba(0,0,0,.3)}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -152,9 +159,15 @@
 <nav class="chips" id="chips" aria-label="Filter"></nav>
 <main id="list"></main>
 <div class="toolbar">
-  <button id="expBackup">⬇︎ Backup notes</button>
-  <button id="expSF" class="primary">⬇︎ Export for Salesforce</button>
-  <button id="importBtn">⬆︎ Restore</button>
+  <div class="savebar">
+    <span id="saveState">✓ Saved on this phone</span>
+    <span id="backupState"></span>
+  </div>
+  <div class="toolrow">
+    <button id="expBackup">⬇︎ Backup notes</button>
+    <button id="expSF" class="primary">⬇︎ Export for Salesforce</button>
+    <button id="importBtn">⬆︎ Restore</button>
+  </div>
   <input id="importFile" type="file" accept="application/json" style="display:none">
 </div>
 <div class="toast" id="toast"></div>
@@ -169,9 +182,37 @@ let storageOK = true;
 try{ overrides = JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); }
 catch(e){ overrides = {}; storageOK = false; }
 function ov(key){ return overrides[key] || (overrides[key] = {met:false, note:'', added:[]}); }
+
+const META_KEY = 'iste2026_floor_meta_v1';
+let meta = { lastBackup:0, lastChange:0 };
+try{ meta = Object.assign(meta, JSON.parse(localStorage.getItem(META_KEY) || '{}')); }catch(e){}
+function saveMeta(){ try{ if(storageOK) localStorage.setItem(META_KEY, JSON.stringify(meta)); }catch(e){} }
+
+let savedTimer;
+function flashSaved(){
+  const s = document.getElementById('saveState'); if(!s) return;
+  if(!storageOK){ s.textContent='Preview only — saving is off here'; s.className='off'; return; }
+  s.textContent='Saving…'; s.className='saving';
+  clearTimeout(savedTimer);
+  savedTimer = setTimeout(()=>{ s.textContent='✓ Saved on this phone'; s.className=''; }, 350);
+}
+function fmtTime(t){ if(!t) return 'never';
+  return new Date(t).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }
+function updateBackupState(){
+  const b = document.getElementById('backupState'); const eb = document.getElementById('expBackup');
+  if(!b) return;
+  const due = storageOK && meta.lastChange > meta.lastBackup;
+  if(!storageOK){ b.textContent=''; b.className=''; if(eb) eb.classList.remove('due'); return; }
+  b.textContent = due ? '⚠ New notes — back up' : ('Backed up: ' + fmtTime(meta.lastBackup));
+  b.classList.toggle('due', due);
+  if(eb) eb.classList.toggle('due', due);
+}
+
 function save(){
   try{ if(storageOK) localStorage.setItem(STORE_KEY, JSON.stringify(overrides)); }
   catch(e){ storageOK = false; }
+  meta.lastChange = Date.now(); saveMeta();
+  flashSaved(); updateBackupState();
 }
 
 /* ---- state ---- */
@@ -248,14 +289,12 @@ function cardHTML(c){
   const boothHTML = c.booth
     ? '<div class="booth"><small>BOOTH</small>'+esc(c.booth)+'</div>'
     : '<div class="booth none"><b>No<br>booth</b></div>';
-  const tier = (c.tier||'').match(/Tier\s*([123])/i);
-  const tierHTML = tier ? '<span class="tier t-'+tier[1]+'">T'+tier[1]+'</span>' : '';
   const badgeLbl = {client:'Client',prospect:'Prospect',account:'Account',exhibitor:'Exhibitor'}[c.category];
 
   let h = '<div class="card'+(o.met?' met':'')+'" data-key="'+esc(c.key)+'">';
   h += '<div class="row js-toggle">'+boothHTML+'<div class="info">';
   h += '<div class="cname">'+esc(c.name)+(o.met?'<span class="star">★</span>':'')+'</div>';
-  h += '<div class="meta"><span class="badge b-'+c.category+'">'+badgeLbl+'</span>'+tierHTML;
+  h += '<div class="meta"><span class="badge b-'+c.category+'">'+badgeLbl+'</span>';
   if(c.hq) h += '<span class="hq">'+esc(c.hq)+'</span>';
   h += '<span class="cc'+(n?'':' zero')+'">'+(n? n+(n===1?' contact':' contacts'):'no contacts')+'</span>';
   h += '</div></div><div class="chev">▶</div></div>';
@@ -376,7 +415,8 @@ function download(name, text, type){
 }
 document.getElementById('expBackup').onclick = ()=>{
   download('iste2026_floor_backup.json', JSON.stringify(overrides,null,2), 'application/json');
-  toast('Backup downloaded');
+  meta.lastBackup = Date.now(); saveMeta(); updateBackupState();
+  toast('Backup downloaded — keep it safe');
 };
 document.getElementById('expSF').onclick = ()=>{
   const rows = [['Company','Booth','Category','Met','My Notes','Contacts I Added']];
@@ -407,6 +447,8 @@ document.getElementById('importFile').onchange = (e)=>{
 };
 
 render();
+if(!storageOK){ const s=document.getElementById('saveState'); if(s){ s.textContent='Preview only — saving is off here'; s.className='off'; } }
+updateBackupState();
 </script>
 </body>
 </html>
