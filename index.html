@@ -6,6 +6,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#10355c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>ISTE 2026 — Floor Contacts</title>
 <style>
   :root{
@@ -56,7 +59,6 @@
   .empty{text-align:center;color:var(--muted);padding:48px 20px;font-size:15px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:13px;
     margin-bottom:9px;box-shadow:var(--shadow);overflow:hidden}
-  .card.met{border-color:#bcd9c8;background:#fafdfb}
   .row{display:flex;align-items:center;gap:11px;padding:12px 12px;cursor:pointer}
   .booth{flex:0 0 auto;min-width:58px;text-align:center;background:#f4f7fb;border:1.5px solid #c7d6e6;
     color:var(--navy);border-radius:9px;padding:7px 6px;font-weight:800;font-size:16px;
@@ -110,8 +112,6 @@
   .addgrid .save{background:var(--navy);color:#fff;border-color:var(--navy)}
   .actbar{display:flex;gap:8px;margin-top:12px}
   .actbar .mini{flex:1;text-align:center;padding:10px}
-  .actbar .met{border-color:#bcd9c8}
-  .actbar .met.on{background:var(--green);color:#fff;border-color:var(--green)}
   .pnote{width:100%;font-size:15px;padding:9px 10px;border:1px solid var(--line);
     border-radius:8px;background:#fffdf7;resize:vertical;min-height:46px;margin-top:6px}
   /* ---------- footer ---------- */
@@ -225,7 +225,7 @@ const FILTERS = [
   {id:'prospect', label:'Prospects',  test:c=>c.category==='prospect'},
   {id:'account',  label:'Accounts',   test:c=>c.category==='account'},
   {id:'contacts', label:'Has contacts', test:c=>totalContacts(c)>0},
-  {id:'met',      label:'★ Met',      test:c=>ov(c.key).met},
+  {id:'noted',    label:'✎ Noted',    test:c=>{const n=ov(c.key).note; return !!(n && n.trim());}},
   {id:'all',      label:'Full floor', test:()=>true},
 ];
 
@@ -291,9 +291,9 @@ function cardHTML(c){
     : '<div class="booth none"><b>No<br>booth</b></div>';
   const badgeLbl = {client:'Client',prospect:'Prospect',account:'Account',exhibitor:'Exhibitor'}[c.category];
 
-  let h = '<div class="card'+(o.met?' met':'')+'" data-key="'+esc(c.key)+'">';
+  let h = '<div class="card" data-key="'+esc(c.key)+'">';
   h += '<div class="row js-toggle">'+boothHTML+'<div class="info">';
-  h += '<div class="cname">'+esc(c.name)+(o.met?'<span class="star">★</span>':'')+'</div>';
+  h += '<div class="cname">'+esc(c.name)+'</div>';
   h += '<div class="meta"><span class="badge b-'+c.category+'">'+badgeLbl+'</span>';
   if(c.hq) h += '<span class="hq">'+esc(c.hq)+'</span>';
   h += '<span class="cc'+(n?'':' zero')+'">'+(n? n+(n===1?' contact':' contacts'):'no contacts')+'</span>';
@@ -309,16 +309,14 @@ function cardHTML(c){
   } else {
     h += '<div class="sectlbl">Contacts</div><div class="ct" style="padding:4px 0 2px">None on file yet — add anyone you meet below.</div>';
   }
-  // add form
+  // my show notes (above add-contact)
+  h += '<div class="sectlbl">My show notes</div>';
+  h += '<textarea class="pnote js-note" placeholder="Notes for Salesforce (e.g. talked to Jane, send Q3 proposal)…">'+esc(o.note)+'</textarea>';
+  // add form (name + title only)
   h += '<div class="sectlbl">Add a contact</div><div class="addbox">';
   h += '<input class="f-name" placeholder="Name" autocomplete="off">';
   h += '<input class="f-title" placeholder="Title" autocomplete="off">';
-  h += '<input class="f-email" placeholder="Email" inputmode="email" autocomplete="off">';
   h += '<div class="addgrid"><button class="mini save js-add">Save contact</button></div></div>';
-  // actions
-  h += '<div class="sectlbl">My show notes</div>';
-  h += '<div class="actbar"><button class="mini met'+(o.met?' on':'')+' js-met">'+(o.met?'★ Met — tap to clear':'☆ Mark as met')+'</button></div>';
-  h += '<textarea class="pnote js-note" placeholder="Notes for Salesforce (e.g. talked to Jane, send Q3 proposal)…">'+esc(o.note)+'</textarea>';
   h += '</div></div>';
   return h;
 }
@@ -351,16 +349,6 @@ listEl.addEventListener('click', e=>{
   const copyBtn = e.target.closest('[data-copy]');
   if(copyBtn){ copyText(copyBtn.getAttribute('data-copy')); return; }
 
-  if(e.target.closest('.js-met')){
-    o.met = !o.met; save();
-    const wasOpen = card.classList.contains('open');
-    card.outerHTML = cardHTML(c);
-    if(wasOpen) document.querySelector('.card[data-key="'+cssEsc(c.key)+'"]').classList.add('open');
-    if(state.filter==='met') render();
-    toast(o.met?'Marked as met':'Cleared');
-    return;
-  }
-
   const del = e.target.closest('[data-del]');
   if(del){
     const i = parseInt(del.getAttribute('data-del'),10);
@@ -371,9 +359,8 @@ listEl.addEventListener('click', e=>{
   if(e.target.closest('.js-add')){
     const name = card.querySelector('.f-name').value.trim();
     const title = card.querySelector('.f-title').value.trim();
-    const email = card.querySelector('.f-email').value.trim();
-    if(!name && !email){ toast('Add a name or email first'); return; }
-    o.added.push({name,title,email}); save();
+    if(!name){ toast('Add a name first'); return; }
+    o.added.push({name,title,email:''}); save();
     refreshCard(card,c); toast('Contact added'); return;
   }
 });
@@ -423,13 +410,13 @@ document.getElementById('expBackup').onclick = ()=>{
   toast('Backup downloaded — keep it safe');
 };
 document.getElementById('expSF').onclick = ()=>{
-  const rows = [['Company','Booth','Category','Met','My Notes','Contacts I Added']];
+  const rows = [['Company','Booth','Category','My Notes','Contacts I Added']];
   DATA.forEach(c=>{
     const o = overrides[c.key]; if(!o) return;
-    const hasData = o.met || (o.note&&o.note.trim()) || (o.added&&o.added.length);
+    const hasData = (o.note&&o.note.trim()) || (o.added&&o.added.length);
     if(!hasData) return;
     const added = (o.added||[]).map(a=>[a.name,a.title,a.email].filter(Boolean).join(' | ')).join(' ; ');
-    rows.push([c.name, c.booth||'', c.category, o.met?'Yes':'', (o.note||'').trim(), added]);
+    rows.push([c.name, c.booth||'', c.category, (o.note||'').trim(), added]);
   });
   if(rows.length===1){ toast('Nothing logged yet'); return; }
   const csv = rows.map(r=>r.map(v=>{
