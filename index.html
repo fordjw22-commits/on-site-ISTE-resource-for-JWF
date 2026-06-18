@@ -342,7 +342,11 @@ listEl.addEventListener('click', e=>{
   const card = cardOf(e.target); if(!card) return;
   const c = dataOf(card); const o = ov(c.key);
 
-  if(e.target.closest('.js-toggle')){ card.classList.toggle('open'); return; }
+  if(e.target.closest('.js-toggle')){
+    listEl.querySelectorAll('.card.open').forEach(o=>{ if(o!==card) o.classList.remove('open'); });
+    card.classList.toggle('open');
+    return;
+  }
 
   const copyBtn = e.target.closest('[data-copy]');
   if(copyBtn){ copyText(copyBtn.getAttribute('data-copy')); return; }
